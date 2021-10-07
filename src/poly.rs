@@ -20,7 +20,7 @@ use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::iter::{repeat_with, once};
+use std::iter::{once, repeat_with};
 use std::{cmp, iter, ops};
 
 use ff::Field;
@@ -97,6 +97,7 @@ impl<B: Borrow<Poly>> ops::Add<B> for Poly {
     }
 }
 
+//
 impl<'a> ops::Add<Fr> for Poly {
     type Output = Poly;
 
@@ -652,8 +653,6 @@ impl BivarPoly {
         })
     }
 
-
-    
     /// Creates a random polynomial.
     pub fn try_random<R: Rng>(degree: usize, rng: &mut R) -> Result<Self> {
         let len = coeff_pos(degree, degree)
@@ -666,20 +665,21 @@ impl BivarPoly {
         Ok(poly)
     }
 
-        /// Creates a random polynomial with a zero constant term.
+    /// Creates a random polynomial with a zero constant term.
     pub fn try_random_zeroconstant<R: Rng>(degree: usize, rng: &mut R) -> Result<Self> {
         let len = coeff_pos(degree, degree)
             .and_then(|l| l.checked_add(1))
             .ok_or(Error::DegreeTooHigh)?;
         let poly = BivarPoly {
             degree,
-            coeff: once(Fr::zero()).chain(repeat_with(|| Fr::random(rng))).take(len).collect(),
+            coeff: once(Fr::zero())
+                .chain(repeat_with(|| Fr::random(rng)))
+                .take(len)
+                .collect(),
         };
         Ok(poly)
     }
 
-    
-    
     /// Returns the polynomial's degree; which is the same in both variables.
     pub fn degree(&self) -> usize {
         self.degree
@@ -780,6 +780,38 @@ impl BivarPoly {
             degree: d,
             coeff: c,
         })
+    }
+}
+
+#[allow(clippy::suspicious_op_assign_impl)]
+impl<B: Borrow<BivarPoly>> ops::AddAssign<B> for BivarPoly {
+    fn add_assign(&mut self, rhs: B) {
+        let len = self.coeff.len();
+        let rhs_len = rhs.borrow().coeff.len();
+        if rhs_len > len {
+            self.coeff.resize(rhs_len, Fr::zero());
+        }
+        for (self_c, rhs_c) in self.coeff.iter_mut().zip(&rhs.borrow().coeff) {
+            Field::add_assign(self_c, rhs_c);
+        }
+        //        self.remove_zeros();
+    }
+}
+
+impl<'a, B: Borrow<BivarPoly>> ops::Add<B> for &'a BivarPoly {
+    type Output = BivarPoly;
+
+    fn add(self, rhs: B) -> BivarPoly {
+        (*self).clone() + rhs
+    }
+}
+
+impl<B: Borrow<BivarPoly>> ops::Add<B> for BivarPoly {
+    type Output = BivarPoly;
+
+    fn add(mut self, rhs: B) -> BivarPoly {
+        self += rhs;
+        self
     }
 }
 
@@ -1062,7 +1094,7 @@ mod tests {
         for bi_poly in &bi_polys {
             sec_key_set += bi_poly.row(0);
         }
-	println!("shared secret key {:?}",sec_key_set.evaluate(0));
+        println!("shared secret key {:?}", sec_key_set.evaluate(0));
         for m in 1..=node_num {
             assert_eq!(sec_key_set.evaluate(m), sec_keys[m - 1]);
         }
@@ -1148,11 +1180,11 @@ mod tests {
         for bi_poly in &bi_polys {
             sec_key_set += bi_poly.row(0);
         }
-	assert_eq!(sec_key_set.evaluate(0),Fr::zero());
-	println!("shared secret key {:?}",sec_key_set.evaluate(0));
+        assert_eq!(sec_key_set.evaluate(0), Fr::zero());
+        //	println!("shared secret key {:?}",sec_key_set.evaluate(0));
         for m in 1..=node_num {
             assert_eq!(sec_key_set.evaluate(m), sec_keys[m - 1]);
-	    println!("node {:?}'s share of zero {:?}",m,sec_key_set.evaluate(m));
+            //	    println!("node {:?}'s share of zero {:?}",m,sec_key_set.evaluate(m));
         }
 
         // The sum of the first rows of the public commitments is the commitment to the secret key
@@ -1163,7 +1195,6 @@ mod tests {
         }
         assert_eq!(sum_commit, sec_key_set.commitment());
     }
-
 
     // Do DKG twice, the second time sharing zero.
     #[test]
@@ -1181,7 +1212,7 @@ mod tests {
             .collect();
         let pub_bi_commits: Vec<_> = bi_polys.iter().map(BivarPoly::commitment).collect();
 
-	// This will hold the (constant coefficient of) each node's secret key share
+        // This will hold the (constant coefficient of) each node's secret key share
         let mut sec_keys = vec![Fr::zero(); node_num];
 
         // Each dealer sends row `m` to node `m`, where the index starts at `1`. Don't send row `0`
@@ -1238,10 +1269,10 @@ mod tests {
         for bi_poly in &bi_polys {
             sec_key_set += bi_poly.row(0);
         }
-	println!("shared secret key {:?}",sec_key_set.evaluate(0));
+        println!("shared secret key {:?}", sec_key_set.evaluate(0));
         for m in 1..=node_num {
             assert_eq!(sec_key_set.evaluate(m), sec_keys[m - 1]);
-	    println!("node {:?}'s share {:?}",m,sec_key_set.evaluate(m));
+            println!("node {:?}'s share {:?}", m, sec_key_set.evaluate(m));
         }
 
         // The sum of the first rows of the public commitments is the commitment to the secret key
@@ -1252,37 +1283,53 @@ mod tests {
         }
         assert_eq!(sum_commit, sec_key_set.commitment());
 
-	// Now we do it again, this time with a sharing of zero. Each object has three versions: old, delta, and new (usually old+delta).  For some objects like the master shared secret key, new = old, while for others such as the key shares, they are not equal. We need updated commitments as well.
-	println!("Refresh");
+        // Now we do it again, this time with a sharing of zero. Each object has three versions: old,
+        // delta, and new (usually old+delta).  For some objects like the master shared secret key,
+        // new = old, while for others such as the key shares, they are not equal. We need updated
+        // commitments as well.
+        println!("Refresh");
 
-	let delta_bi_polys: Vec<BivarPoly> = (0..dealer_num)
+        let delta_bi_polys: Vec<BivarPoly> = (0..dealer_num)
             .map(|_| BivarPoly::random_zeroconstant(faulty_num, &mut rng))
             .collect();
-        let delta_pub_bi_commits: Vec<_> = delta_bi_polys.iter().map(BivarPoly::commitment).collect();
+        let delta_pub_bi_commits: Vec<_> =
+            delta_bi_polys.iter().map(BivarPoly::commitment).collect();
 
-	// This will hold the (constant coefficient of) each node's secret key share of delta
+        //implemented Add but should check
+        let new_bi_polys: Vec<BivarPoly> = bi_polys
+            .iter()
+            .zip(delta_bi_polys.clone())
+            .map(|(a, b)| a + &b)
+            .collect();
+        let new_pub_bi_commits: Vec<_> = new_bi_polys.iter().map(BivarPoly::commitment).collect();
+
+        // This will hold the (constant coefficient of) each node's secret key share of delta
         let mut delta_sec_keys = vec![Fr::zero(); node_num];
 
         // Each dealer sends row `m` to node `m`, where the index starts at `1`. Don't send row `0`
         // to anyone! The nodes verify their rows, and send _value_ `s` on to node `s`. They again
         // verify the values they received, and collect them.
+        //
+        // The outer loop is over dealers (which can be fewer than the total number of nodes)
         for (delta_bi_poly, delta_bi_commit) in delta_bi_polys.iter().zip(&delta_pub_bi_commits) {
+            // The inner loop is over receivers for each dealer
             for m in 1..=node_num {
                 // Node `m` receives its row and verifies it.
-                let delta_row_poly = delta_bi_poly.row(m);
-                let delta_row_commit = delta_bi_commit.row(m);
+                let delta_row_poly = delta_bi_poly.row(m); // message sent from dealer to receiver m
+                let delta_row_commit = delta_bi_commit.row(m); // public commitment which receiver checks against
                 assert_eq!(delta_row_poly.commitment(), delta_row_commit);
-		// verify the modified commitments
-		// todo, e.g. Add not implemented for let new_row_poly = bi_polys[m-1] + *delta_bi_poly;
+                // verify the modified commitments
+                // todo
+
                 // Node `s` receives the `s`-th value and verifies it.
                 for s in 1..=node_num {
-		    // verify the delta
+                    // verify the delta
                     let val = delta_row_poly.evaluate(s);
                     let val_g1 = G1Affine::one().mul(val);
                     assert_eq!(delta_bi_commit.evaluate(m, s), val_g1);
-		    // verify the modified commitment
-		    // todo
-		    
+                    // verify the modified commitment
+                    // todo
+
                     // The node can't verify this directly, but it should have the correct value:
                     assert_eq!(delta_bi_poly.evaluate(m, s), val);
                 }
@@ -1304,6 +1351,7 @@ mod tests {
                     .iter()
                     .map(|&i| (i, delta_bi_poly.evaluate(m, i)))
                     .collect();
+                // my_row is now an interpolation for the delta polynomial
                 let my_row = Poly::interpolate(received);
                 assert_eq!(delta_bi_poly.evaluate(m, 0), my_row.evaluate(0));
                 assert_eq!(delta_row_poly, my_row);
@@ -1312,7 +1360,7 @@ mod tests {
                 // dealer and no other node knows the sum in the end.
 
                 delta_sec_keys[m - 1].add_assign(&my_row.evaluate(Fr::zero()));
-		// This uses the original sec_keys array, modifying it
+                // This uses the original sec_keys array, modifying it with delta
                 sec_keys[m - 1].add_assign(&my_row.evaluate(Fr::zero()));
             }
         }
@@ -1326,16 +1374,33 @@ mod tests {
         for delta_bi_poly in &delta_bi_polys {
             delta_sec_key_set += delta_bi_poly.row(0);
         }
-	println!("shared secret delta key is zero {:?}",delta_sec_key_set.evaluate(0));
-	println!("Old shared secret key {:?}",sec_key_set.evaluate(0));
-	let new_sec_key_set = delta_sec_key_set.clone() + sec_key_set;
-	println!("New shared secret key is unchanged {:?}",new_sec_key_set.evaluate(0));
-	println!("But the higher-order terms of the shared polynomial and the shares have changed");
+        println!(
+            "shared secret delta key is zero {:?}",
+            delta_sec_key_set.evaluate(0)
+        );
+        println!("Old shared secret key {:?}", sec_key_set.evaluate(0));
+        let new_sec_key_set = delta_sec_key_set.clone() + sec_key_set.clone();
+        println!(
+            "New shared secret key is unchanged {:?}",
+            new_sec_key_set.evaluate(0)
+        );
+        println!("But the higher-order terms of the shared polynomial and the shares have changed");
         for m in 1..=node_num {
             assert_eq!(new_sec_key_set.evaluate(m), sec_keys[m - 1]); //sec_keys was deltaed
-	    println!("node {:?}'s share {:?}",m,new_sec_key_set.evaluate(m));
+            println!("node {:?}'s share {:?}", m, new_sec_key_set.evaluate(m));
         }
 
+        // now interpolate from the new secret keys
+        let samples: Vec<_> = sec_keys
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (i + 1, v))
+            .take(3)
+            .collect();
+        println!("Samples: {:?}", samples);
+        let new_secret_poly = Poly::interpolate(samples);
+        // check that the interpolated secret key hasn't changed although the shares have changed
+        assert_eq!(new_secret_poly.evaluate(0), sec_key_set.evaluate(0));
         // The sum of the first rows of the public commitments is the commitment to the secret key
         // set.
         let mut delta_sum_commit = Poly::zero().commitment();
@@ -1344,7 +1409,6 @@ mod tests {
         }
         assert_eq!(delta_sum_commit, delta_sec_key_set.commitment());
 
-
         // The sum of the first rows of the public commitments is the commitment to the secret key
         // set.
         // let mut sum_commit = Poly::zero().commitment();
@@ -1352,15 +1416,8 @@ mod tests {
         //     sum_commit += bi_commit.row(0);
         // }
         // assert_eq!(sum_commit, sec_key_set.commitment());
-
-	
     }
 
-
-    
-
-
-    
     #[test]
     fn test_commitment_to_from_bytes() {
         let degree = 3;
