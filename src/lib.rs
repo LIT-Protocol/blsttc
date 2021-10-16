@@ -27,6 +27,7 @@ use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::ops::AddAssign;
 use std::vec::Vec;
 
 use ff::Field;
@@ -47,7 +48,7 @@ use crate::secret::clear_fr;
 
 pub use crate::into_fr::IntoFr;
 
-use convert::{
+pub use convert::{
     fr_from_be_bytes, fr_to_be_bytes, g1_from_be_bytes, g1_to_be_bytes, g2_from_be_bytes,
     g2_to_be_bytes,
 };
@@ -100,6 +101,8 @@ impl Ord for PublicKey {
         cmp_projective(&self.0, &other.0)
     }
 }
+
+// impl Add for PublicKey // and PublicKeySet. but for tetsting as it shouldn't change
 
 impl PublicKey {
     /// Returns `true` if the signature matches the element of `G2`.
@@ -349,6 +352,12 @@ impl fmt::Debug for SecretKey {
     }
 }
 
+impl AddAssign for SecretKey {
+    fn add_assign(&mut self, other: Self) {
+        self.0.add_assign(&other.0);
+    }
+}
+
 impl SecretKey {
     /// Creates a new `SecretKey` from a mutable reference to a field element. This constructor
     /// takes a reference to avoid any unnecessary stack copying/moving of secrets (i.e. the field
@@ -461,6 +470,12 @@ impl Distribution<SecretKeyShare> for Standard {
 impl fmt::Debug for SecretKeyShare {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("SecretKeyShare").field(&DebugDots).finish()
+    }
+}
+
+impl AddAssign for SecretKeyShare {
+    fn add_assign(&mut self, other: Self) {
+        self.0.add_assign(other.0);
     }
 }
 
