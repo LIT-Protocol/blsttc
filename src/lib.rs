@@ -690,6 +690,12 @@ impl From<Commitment> for PublicKeySet {
     }
 }
 
+impl AddAssign for PublicKeySet {
+    fn add_assign(self: &mut PublicKeySet, other: Self) {
+        self.commit += other.commit;
+    }
+}
+
 impl PublicKeySet {
     /// Returns the threshold `t`: any set of `t + 1` signature shares can be combined into a full
     /// signature.
