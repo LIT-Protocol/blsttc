@@ -653,6 +653,20 @@ impl BivarPoly {
         })
     }
 
+    /// Creates a random polynomial such that poly.row(r).evaluate(0) = 0
+    ///
+    /// # Panics
+    ///
+    /// Panics if the degree is too high for the coefficients to fit into a `Vec`.
+    pub fn random_zero_at<R: Rng>(degree: usize, r: Fr, rng: &mut R) -> Self {
+        BivarPoly::try_random_zero_at(degree, r, rng).unwrap_or_else(|e| {
+            panic!(
+                "Failed to create random `BivarPoly` of degree {}: {}",
+                degree, e
+            )
+        })
+    }
+
     /// Creates a random polynomial.
     pub fn try_random<R: Rng>(degree: usize, rng: &mut R) -> Result<Self> {
         let len = coeff_pos(degree, degree)
@@ -677,6 +691,21 @@ impl BivarPoly {
                 .take(len)
                 .collect(),
         };
+        Ok(poly)
+    }
+
+    /// Creates a random polynomial with a zero at given field element.
+    pub fn try_random_zero_at<R: Rng>(degree: usize, r: Fr, rng: &mut R) -> Result<Self> {
+        let len = coeff_pos(degree, degree)
+            .and_then(|l| l.checked_add(1))
+            .ok_or(Error::DegreeTooHigh)?;
+
+        let mut poly = BivarPoly::try_random(degree, rng)?;
+        // these compute poly = poly - poly(0,r) \in Fr[x] so now
+        // poly.row(r).evaluate(0) = 0
+        let mut poly_at_r_zero: Fr = poly.row(r).evaluate(0);
+        poly_at_r_zero.negate();
+        poly.coeff[0].add_assign(&poly_at_r_zero);
         Ok(poly)
     }
 
